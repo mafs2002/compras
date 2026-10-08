@@ -47,6 +47,14 @@ li .p{font-size:14px;color:var(--text);flex:none;white-space:nowrap;border:0;bac
 li .p.empty{color:var(--accent);border:1px dashed var(--accent);border-radius:8px;padding:4px 10px;font-weight:600}
 h2{font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:20px 0 4px;display:flex;justify-content:space-between;align-items:center}
 h2 button{font-size:12px;border:1px solid var(--line);background:none;color:var(--muted);border-radius:8px;padding:4px 8px;text-transform:none;letter-spacing:0}
+#login{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:24px;z-index:20}
+#login[hidden]{display:none}
+#login .lb{width:100%;max-width:340px;text-align:center}
+#login h2{display:block;font-size:22px;text-transform:none;letter-spacing:0;color:var(--text);margin:0 0 6px}
+#login p{color:var(--muted);font-size:14px;margin:0 0 16px}
+#login input{width:100%;font-size:16px;padding:12px 14px;margin-bottom:10px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--text)}
+#login button{width:100%;height:46px;border:0;border-radius:12px;background:var(--accent);color:#fff;font-size:16px;font-weight:600}
+#lerr{color:#d64545;font-size:13px;min-height:18px;margin-top:10px}
 .msg{text-align:center;color:var(--muted);padding:24px 0;font-size:14px}
 #modal{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:20px;z-index:10}
 #modal[hidden]{display:none}
@@ -68,7 +76,7 @@ h2 button{font-size:12px;border:1px solid var(--line);background:none;color:var(
 <body>
 <main>
   <h1>🛒 Listas de Compras</h1>
-  <div class="sub"><span id="status">A ligar…</span><button id="editList" hidden>✏️ Editar lista</button></div>
+  <div class="sub"><span id="status">A ligar…</span><span><button id="editList" hidden>✏️ Editar lista</button> <button id="logout" hidden>Sair</button></span></div>
   <div class="tabs" id="tabs"></div>
   <div class="add">
     <div class="r">
@@ -84,13 +92,21 @@ h2 button{font-size:12px;border:1px solid var(--line);background:none;color:var(
   <h2 id="doneHead" hidden><span>No carrinho</span><button id="clear">Limpar</button></h2>
   <ul id="done"></ul>
 </main>
+<div id="login" hidden><div class="lb">
+  <h2>🛒 Lista de Compras</h2><p>Entra com a tua conta.</p>
+  <input id="lemail" type="email" placeholder="Email" autocomplete="username" autocapitalize="off">
+  <input id="lpass" type="password" placeholder="Palavra-passe" autocomplete="current-password">
+  <button id="lbtn">Entrar</button><div id="lerr"></div>
+</div></div>
 <div id="modal" hidden><div class="box" id="box"></div></div>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { firebaseConfig } from "./firebase-config.js";
 
 const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
 
 (function(){
@@ -227,7 +243,7 @@ const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabMana
   }
   $('editList').onclick=function(){ if(cur) openListModal(cur); };
 
-  function err(e){ statusEl.textContent = (e&&e.code==='permission-denied') ? 'Sem permissão: verifica as regras do Firestore.' : 'Erro de ligação, tenta de novo.'; }
+  function err(e){ statusEl.textContent = (e&&e.code==='permission-denied') ? 'Sem permissão: esta conta não tem acesso (verifica as regras do Firestore).' : 'Erro de ligação, tenta de novo.'; }
 
   $('camBtn').onclick=function(){ if(pending){ pending=null; setCam(); } else { fileMode='new'; $('file').click(); } };
   $('file').onchange=function(){
@@ -258,6 +274,9 @@ const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabMana
   function upd(c,id,data){ return updateDoc(doc(db,c,id),data); }
   function del_(c,id){ return deleteDoc(doc(db,c,id)); }
 
+  var started=false;
+  function start(){
+  if(started) return; started=true;
   onSnapshot(collection(db,'lists'),function(snap){
     lists=snap.docs.map(function(d){var x=d.data()||{}; return {id:d.id,name:String(x.name||'Lista'),ts:x.ts||0};})
                    .sort(function(a,b){return a.ts-b.ts});
@@ -273,7 +292,25 @@ const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabMana
                    .sort(function(a,b){return a.ts-b.ts});
     render();
   },function(e){ err(e); });
+  }
+
+  var loginEl=$('login'), le=$('lemail'), lp=$('lpass'), lerr=$('lerr');
+  function doLogin(){
+    lerr.textContent='';
+    signInWithEmailAndPassword(auth,le.value.trim(),lp.value).catch(function(e){
+      var c=e&&e.code;
+      lerr.textContent=(c==='auth/invalid-credential'||c==='auth/wrong-password'||c==='auth/user-not-found'||c==='auth/invalid-email')?'Email ou palavra-passe incorretos.':'Não foi possível entrar. Tenta de novo.';
+    });
+  }
+  $('lbtn').onclick=doLogin;
+  lp.addEventListener('keydown',function(e){ if(e.key==='Enter') doLogin(); });
+  $('logout').onclick=function(){ signOut(auth).then(function(){ location.reload(); }); };
+  onAuthStateChanged(auth,function(u){
+    if(u){ loginEl.hidden=true; $('logout').hidden=false; start(); }
+    else { loginEl.hidden=false; $('logout').hidden=true; statusEl.textContent='Inicia sessão'; }
+  });
 })();
+
 </script>
 </body>
 </html>

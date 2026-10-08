@@ -277,7 +277,7 @@ const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabMana
   var started=false;
   function start(){
   if(started) return; started=true;
-  onSnapshot(collection(db,'lists'),function(snap){
+  onSnapshot(collection(db,'lists'),{includeMetadataChanges:true},function(snap){
     lists=snap.docs.map(function(d){var x=d.data()||{}; return {id:d.id,name:String(x.name||'Lista'),ts:x.ts||0};})
                    .sort(function(a,b){return a.ts-b.ts});
     if(lists.length===0 && !snap.metadata.fromCache && !defaultMade){
@@ -287,7 +287,7 @@ const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabMana
     statusEl.textContent=snap.metadata.fromCache?'A sincronizar… (ou sem ligação)':'Sincronizado em tempo real';
     render();
   },function(e){ err(e); });
-  onSnapshot(collection(db,'items'),function(snap){
+  onSnapshot(collection(db,'items'),{includeMetadataChanges:true},function(snap){
     items=snap.docs.map(function(d){var x=d.data()||{}; return {id:d.id,listId:(typeof x.listId==='string'&&x.listId)?x.listId:'default',text:String(x.text||''),done:!!x.done,ts:x.ts||0,qty:(typeof x.qty==='number'&&x.qty>0)?x.qty:1,price:(typeof x.price==='number'&&isFinite(x.price))?x.price:null,img:(typeof x.img==='string'&&x.img.indexOf('data:image/')===0)?x.img:''};})
                    .sort(function(a,b){return a.ts-b.ts});
     render();
